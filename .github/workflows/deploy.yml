@@ -1,0 +1,58 @@
+name: Terraform GCP Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  GOOGLE_PROJECT: spartan-matter-423616-h6
+  GOOGLE_REGION: us-central1
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: GCP
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.5  # or your desired version
+
+    - name: Write GCP credentials to file
+      run: |
+        mkdir -p infrastructure
+        echo '${{ secrets.GOOGLE_CREDENTIALS }}' > infrastructure/gcp-creds.json
+
+    - name: Set GOOGLE_APPLICATION_CREDENTIALS environment variable
+      run: echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/infrastructure/gcp-creds.json" >> $GITHUB_ENV
+
+    - name: Terraform Init
+      run: terraform -chdir=infrastructure init
+
+    - name: Import existing static IP if exists
+      run: |
+        if gcloud compute addresses describe static-ip --region=$GOOGLE_REGION --project=$GOOGLE_PROJECT > /dev/null 2>&1; then
+          echo "Importing existing static IP into Terraform state..."
+          terraform -chdir=infrastructure import -input=false google_compute_address.static_ip $GOOGLE_PROJECT/$GOOGLE_REGION/static-ip
+        else
+          echo "Static IP not found, skipping import."
+        fi
+
+    - name: Import existing firewall rule if exists
+      run: |
+        if gcloud compute firewall-rules describe allow-http --project=$GOOGLE_PROJECT > /dev/null 2>&1; then
+          echo "Importing existing firewall rule into Terraform state..."
+          terraform -chdir=infrastructure import -input=false google_compute_firewall.default $GOOGLE_PROJECT/global/firewalls/allow-http
+        else
+          echo "Firewall rule not found, skipping import."
+        fi
+
+    - name: Terraform Plan
+      run: terraform -chdir=infrastructure plan -var="project_id=$GOOGLE_PROJECT" -var="region=$GOOGLE_REGION" -input=false
+
+    - name: Terraform Apply
+      run: terraform -chdir=infrastructure apply -var="project_id=$GOOGLE_PROJECT" -var="region=$GOOGLE_REGION" -auto-approve -input=false
