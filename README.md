@@ -9,3 +9,5 @@ terraform apply -auto-approve #apply the plan without confirmation
 terraform destroy #destroy the infrastructure
 
 ```
+
+## FOR GIT ACTION JUST PUSH CODE TO MAIN BRANCH ALL DONE
